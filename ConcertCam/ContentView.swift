@@ -79,7 +79,7 @@ struct MainScreen: View {
                             }
                         }) {
                             Image(systemName: "gearshape.fill")
-                                .font(.system(size: 24))
+                                .font(.system(size: 36))
                                 .foregroundColor(.gray)
                                 .padding()
                         }
