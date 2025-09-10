@@ -70,7 +70,7 @@ struct MainScreen: View {
             
             if currentView == .main {
                 VStack {
-                    // Settings button (only visible on home/main screen)
+                    // Settings button
                     HStack {
                         Spacer()
                         Button(action: {
@@ -88,7 +88,38 @@ struct MainScreen: View {
                     Spacer()
                     
                     // Main buttons
-                    MainButtons()
+                    VStack(spacing: 60) {
+                        // Video Button (above)
+                        Button(action: {
+                            startCapture(mode: .video)
+                        }) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.red)
+                                    .frame(width: 160, height: 160)
+                                
+                                Image(systemName: "video.fill")
+                                    .font(.system(size: 60))
+                                    .foregroundColor(.white)
+                            }
+                        }
+                        
+                        // Photo Button (below)
+                        Button(action: {
+                            startCapture(mode: .photo)
+                        }) {
+                            ZStack {
+                                Circle()
+                                    .stroke(Color.white, lineWidth: 4)
+                                    .background(Circle().fill(Color.white.opacity(0.3)))
+                                    .frame(width: 160, height: 160)
+                                
+                                Image(systemName: "camera.fill")
+                                    .font(.system(size: 60))
+                                    .foregroundColor(.white)
+                            }
+                        }
+                    }
                     
                     Spacer()
                 }
@@ -96,42 +127,6 @@ struct MainScreen: View {
                 CountdownView()
             } else if currentView == .blackScreen {
                 BlackScreenView()
-            }
-        }
-    }
-    
-    // MARK: - Main Buttons View
-    func MainButtons() -> some View {
-        VStack(spacing: 60) {
-            // Video Button (above)
-            Button(action: {
-                startCapture(mode: .video)
-            }) {
-                ZStack {
-                    Circle()
-                        .fill(Color.red)
-                        .frame(width: 160, height: 160)
-                    
-                    Image(systemName: "video.fill")
-                        .font(.system(size: 60))
-                        .foregroundColor(.white)
-                }
-            }
-            
-            // Photo Button (below)
-            Button(action: {
-                startCapture(mode: .photo)
-            }) {
-                ZStack {
-                    Circle()
-                        .stroke(Color.white, lineWidth: 4)
-                        .background(Circle().fill(Color.white.opacity(0.3)))
-                        .frame(width: 160, height: 160)
-                    
-                    Image(systemName: "camera.fill")
-                        .font(.system(size: 60))
-                        .foregroundColor(.white)
-                }
             }
         }
     }
@@ -159,25 +154,45 @@ struct MainScreen: View {
             Color.black
                 .ignoresSafeArea()
             
-            // Optional: Add a subtle indicator that capture is happening
+            // Recording indicator for video mode
+            if captureMode == .video {
+                VStack {
+                    HStack {
+                        Circle()
+                            .fill(Color.red)
+                            .frame(width: 12, height: 12)
+                            .opacity(0.8)
+                        Text("REC")
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .opacity(0.8)
+                        Spacer()
+                    }
+                    .padding(.top, 50)
+                    .padding(.horizontal, 20)
+                    Spacer()
+                }
+            }
+            
+            // Capture indicator
             Text(captureMode == .photo ? "📸" : "🎥")
                 .font(.system(size: 40))
                 .opacity(0.3)
         }
         .onAppear {
             if captureMode == .photo {
-                // Photo mode: Return automatically after 3 seconds
+                // Photo mode: Auto-return after 3 seconds
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
                     withAnimation(.easeInOut(duration: 0.5)) {
                         currentView = .main
                     }
                 }
             }
-            // Video mode: Stay on black screen until user taps
+            // Video mode: Stay until user taps
         }
         .onTapGesture {
             if captureMode == .video {
-                // Video mode: Return to main on tap
+                // Video mode: Return on tap
                 withAnimation(.easeInOut(duration: 0.5)) {
                     currentView = .main
                 }
@@ -219,7 +234,6 @@ struct SettingsView: View {
     
     var body: some View {
         ZStack {
-            // Dark background
             Color.black
                 .ignoresSafeArea()
             

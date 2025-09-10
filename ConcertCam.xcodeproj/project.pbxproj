@@ -420,6 +420,9 @@
 				DEVELOPMENT_TEAM = P9GPJYD9A3;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
+				INFOPLIST_KEY_NSCameraUsageDescription = "ConcertCam needs camera access to record videos without a bright screen.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "ConcertCam needs microphone access to record audio with videos.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -449,6 +452,9 @@
 				DEVELOPMENT_TEAM = P9GPJYD9A3;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
+				INFOPLIST_KEY_NSCameraUsageDescription = "ConcertCam needs camera access to record videos without a bright screen.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "ConcertCam needs microphone access to record audio with videos.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
