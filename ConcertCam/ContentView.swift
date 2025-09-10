@@ -5,20 +5,26 @@ struct ContentView: View {
     @State private var showSettings = false
     
     var body: some View {
-        if showWelcome {
-            WelcomeScreen()
-                .onAppear {
-                    // Automatically transition after 2 seconds
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                        withAnimation(.easeInOut(duration: 0.5)) {
-                            showWelcome = false
+        ZStack {
+            // Persistent black background
+            Color.black
+                .ignoresSafeArea()
+            
+            if showWelcome {
+                WelcomeScreen()
+                    .onAppear {
+                        // Automatically transition after 2 seconds
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                            withAnimation(.easeInOut(duration: 0.5)) {
+                                showWelcome = false
+                            }
                         }
                     }
-                }
-        } else if showSettings {
-            SettingsView(showSettings: $showSettings)
-        } else {
-            MainScreen(showSettings: $showSettings)
+            } else if showSettings {
+                SettingsView(showSettings: $showSettings)
+            } else {
+                MainScreen(showSettings: $showSettings)
+            }
         }
     }
 }
