@@ -1,4 +1,217 @@
 import SwiftUI
+import AVFoundation
+import Photos
+
+class CameraManager: NSObject, ObservableObject {
+    @Published var isRecording = false
+    @Published var permissionGranted = false
+    @Published var photoLibraryPermissionGranted = false
+    
+    private let captureSession = AVCaptureSession()
+    private var videoOutput: AVCaptureMovieFileOutput?
+    private var photoOutput: AVCapturePhotoOutput?
+    private var videoDevice: AVCaptureDevice?
+    
+    override init() {
+        super.init()
+        checkPermissions()
+        setupCamera()
+    }
+    
+    func checkPermissions() {
+        // Check camera permission
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            permissionGranted = true
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async {
+                    self.permissionGranted = granted
+                    if granted {
+                        self.setupCamera()
+                    }
+                }
+            }
+        default:
+            permissionGranted = false
+        }
+        
+        // Check photo library permission
+        switch PHPhotoLibrary.authorizationStatus() {
+        case .authorized, .limited:
+            photoLibraryPermissionGranted = true
+        case .notDetermined:
+            PHPhotoLibrary.requestAuthorization { status in
+                DispatchQueue.main.async {
+                    self.photoLibraryPermissionGranted = (status == .authorized || status == .limited)
+                }
+            }
+        default:
+            photoLibraryPermissionGranted = false
+        }
+    }
+    
+    func setupCamera() {
+        guard permissionGranted else { return }
+        
+        captureSession.beginConfiguration()
+        captureSession.sessionPreset = .high
+        
+        // Add video input
+        guard let videoDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+              let videoInput = try? AVCaptureDeviceInput(device: videoDevice) else {
+            captureSession.commitConfiguration()
+            return
+        }
+        
+        self.videoDevice = videoDevice
+        
+        if captureSession.canAddInput(videoInput) {
+            captureSession.addInput(videoInput)
+        }
+        
+        // Add photo output
+        let photoOutput = AVCapturePhotoOutput()
+        self.photoOutput = photoOutput
+        if captureSession.canAddOutput(photoOutput) {
+            captureSession.addOutput(photoOutput)
+        }
+        
+        // Add video output
+        let videoOutput = AVCaptureMovieFileOutput()
+        self.videoOutput = videoOutput
+        if captureSession.canAddOutput(videoOutput) {
+            captureSession.addOutput(videoOutput)
+        }
+        
+        captureSession.commitConfiguration()
+    }
+    
+    func startSession() {
+        guard permissionGranted else { return }
+        DispatchQueue.global(qos: .background).async {
+            self.captureSession.startRunning()
+        }
+    }
+    
+    func stopSession() {
+        DispatchQueue.global(qos: .background).async {
+            self.captureSession.stopRunning()
+        }
+    }
+    
+    func takePhoto() {
+        guard let photoOutput = photoOutput else { return }
+        
+        // Set auto-focus and auto-exposure to center
+        setFocusAndExposureToCenter()
+        
+        let settings = AVCapturePhotoSettings()
+        photoOutput.capturePhoto(with: settings, delegate: self)
+    }
+    
+    func startVideoRecording() {
+        guard let videoOutput = videoOutput, !videoOutput.isRecording else { return }
+        
+        // Set auto-focus and auto-exposure to center
+        setFocusAndExposureToCenter()
+        
+        // Create output URL
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let outputURL = documentsPath.appendingPathComponent("concertcam_video_\(Date().timeIntervalSince1970).mov")
+        
+        videoOutput.startRecording(to: outputURL, recordingDelegate: self)
+        isRecording = true
+    }
+    
+    func stopVideoRecording() {
+        guard let videoOutput = videoOutput, videoOutput.isRecording else { return }
+        videoOutput.stopRecording()
+        isRecording = false
+    }
+    
+    private func setFocusAndExposureToCenter() {
+        guard let device = videoDevice else { return }
+        
+        do {
+            try device.lockForConfiguration()
+            
+            // Set focus to center point (0.5, 0.5)
+            if device.isFocusPointOfInterestSupported && device.isFocusModeSupported(.autoFocus) {
+                device.focusPointOfInterest = CGPoint(x: 0.5, y: 0.5)
+                device.focusMode = .autoFocus
+            }
+            
+            // Set exposure to center point
+            if device.isExposurePointOfInterestSupported && device.isExposureModeSupported(.autoExpose) {
+                device.exposurePointOfInterest = CGPoint(x: 0.5, y: 0.5)
+                device.exposureMode = .autoExpose
+            }
+            
+            device.unlockForConfiguration()
+        } catch {
+            print("Error setting focus and exposure: \(error)")
+        }
+    }
+    
+    private func saveToPhotoLibrary(imageData: Data? = nil, videoURL: URL? = nil) {
+        guard photoLibraryPermissionGranted else {
+            print("Photo library permission not granted")
+            return
+        }
+        
+        PHPhotoLibrary.shared().performChanges {
+            if let imageData = imageData {
+                PHAssetCreationRequest.creationRequestForAsset(from: UIImage(data: imageData)!)
+            } else if let videoURL = videoURL {
+                PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: videoURL)
+            }
+        } completionHandler: { success, error in
+            DispatchQueue.main.async {
+                if success {
+                    print("Media saved to Photo Library successfully")
+                } else if let error = error {
+                    print("Error saving to Photo Library: \(error)")
+                }
+                
+                // Clean up temporary file for video
+                if let videoURL = videoURL {
+                    try? FileManager.default.removeItem(at: videoURL)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Photo Capture Delegate
+extension CameraManager: AVCapturePhotoCaptureDelegate {
+    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+        if let error = error {
+            print("Error capturing photo: \(error)")
+            return
+        }
+        
+        guard let imageData = photo.fileDataRepresentation() else {
+            print("Error getting photo data")
+            return
+        }
+        
+        print("Photo captured successfully")
+        saveToPhotoLibrary(imageData: imageData)
+    }
+}
+
+// MARK: - Video Recording Delegate
+extension CameraManager: AVCaptureFileOutputRecordingDelegate {
+    func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
+        if let error = error {
+            print("Error recording video: \(error)")
+        } else {
+            print("Video recorded successfully")
+            saveToPhotoLibrary(videoURL: outputFileURL)
+        }
+    }
+}
 
 struct ContentView: View {
     @State private var showWelcome = true
@@ -47,6 +260,7 @@ struct WelcomeScreen: View {
 
 struct MainScreen: View {
     @Binding var showSettings: Bool
+    @StateObject private var cameraManager = CameraManager()
     @State private var currentView: ViewState = .main
     @State private var countdownNumber = 3
     @State private var captureMode: CaptureMode = .photo
@@ -129,6 +343,12 @@ struct MainScreen: View {
                 BlackScreenView()
             }
         }
+        .onAppear {
+            cameraManager.startSession()
+        }
+        .onDisappear {
+            cameraManager.stopSession()
+        }
     }
     
     // MARK: - Countdown View
@@ -155,7 +375,7 @@ struct MainScreen: View {
                 .ignoresSafeArea()
             
             // Recording indicator for video mode
-            if captureMode == .video {
+            if captureMode == .video && cameraManager.isRecording {
                 VStack {
                     HStack {
                         Circle()
@@ -181,18 +401,24 @@ struct MainScreen: View {
         }
         .onAppear {
             if captureMode == .photo {
-                // Photo mode: Auto-return after 3 seconds
-                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                // Photo mode: Take photo and auto-return after brief delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    cameraManager.takePhoto()
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                     withAnimation(.easeInOut(duration: 0.5)) {
                         currentView = .main
                     }
                 }
+            } else if captureMode == .video {
+                // Video mode: Start recording
+                cameraManager.startVideoRecording()
             }
-            // Video mode: Stay until user taps
         }
         .onTapGesture {
             if captureMode == .video {
-                // Video mode: Return on tap
+                // Video mode: Stop recording and return to main
+                cameraManager.stopVideoRecording()
                 withAnimation(.easeInOut(duration: 0.5)) {
                     currentView = .main
                 }
