@@ -6,6 +6,7 @@ class CameraManager: NSObject, ObservableObject {
     @Published var isRecording = false
     @Published var permissionGranted = false
     @Published var photoLibraryPermissionGranted = false
+    @Published var lastCapturedImage: UIImage?
     
     private let captureSession = AVCaptureSession()
     private var videoOutput: AVCaptureMovieFileOutput?
@@ -40,10 +41,14 @@ class CameraManager: NSObject, ObservableObject {
         switch PHPhotoLibrary.authorizationStatus() {
         case .authorized, .limited:
             photoLibraryPermissionGranted = true
+            loadLastPhotoFromLibrary()
         case .notDetermined:
             PHPhotoLibrary.requestAuthorization { status in
                 DispatchQueue.main.async {
                     self.photoLibraryPermissionGranted = (status == .authorized || status == .limited)
+                    if self.photoLibraryPermissionGranted {
+                        self.loadLastPhotoFromLibrary()
+                    }
                 }
             }
         default:
@@ -154,6 +159,42 @@ class CameraManager: NSObject, ObservableObject {
         }
     }
     
+    func loadLastPhotoFromLibrary() {
+        guard photoLibraryPermissionGranted else {
+            print("Photo library permission not granted, can't load thumbnail")
+            return
+        }
+        
+        print("Loading last photo from library...")
+        
+        let fetchOptions = PHFetchOptions()
+        fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        fetchOptions.fetchLimit = 1
+        
+        let fetchResult = PHAsset.fetchAssets(with: .image, options: fetchOptions)
+        
+        if let lastAsset = fetchResult.firstObject {
+            print("Found last photo asset, requesting image...")
+            let imageManager = PHImageManager.default()
+            let requestOptions = PHImageRequestOptions()
+            requestOptions.isSynchronous = false
+            requestOptions.deliveryMode = .highQualityFormat
+            
+            imageManager.requestImage(for: lastAsset, targetSize: CGSize(width: 100, height: 100), contentMode: .aspectFill, options: requestOptions) { image, _ in
+                DispatchQueue.main.async {
+                    if let image = image {
+                        print("Successfully loaded thumbnail image")
+                        self.lastCapturedImage = image
+                    } else {
+                        print("Failed to load thumbnail image")
+                    }
+                }
+            }
+        } else {
+            print("No photos found in library")
+        }
+    }
+    
     private func saveToPhotoLibrary(imageData: Data? = nil, videoURL: URL? = nil) {
         guard photoLibraryPermissionGranted else {
             print("Photo library permission not granted")
@@ -170,6 +211,12 @@ class CameraManager: NSObject, ObservableObject {
             DispatchQueue.main.async {
                 if success {
                     print("Media saved to Photo Library successfully")
+                    // Update thumbnail with latest captured image
+                    if let imageData = imageData {
+                        self.lastCapturedImage = UIImage(data: imageData)
+                    } else if let videoURL = videoURL {
+                        self.generateVideoThumbnail(from: videoURL)
+                    }
                 } else if let error = error {
                     print("Error saving to Photo Library: \(error)")
                 }
@@ -179,6 +226,23 @@ class CameraManager: NSObject, ObservableObject {
                     try? FileManager.default.removeItem(at: videoURL)
                 }
             }
+        }
+    }
+    
+    private func generateVideoThumbnail(from url: URL) {
+        let asset = AVAsset(url: url)
+        let imageGenerator = AVAssetImageGenerator(asset: asset)
+        imageGenerator.appliesPreferredTrackTransform = true
+        
+        let time = CMTime(seconds: 0, preferredTimescale: 600)
+        
+        do {
+            let cgImage = try imageGenerator.copyCGImage(at: time, actualTime: nil)
+            DispatchQueue.main.async {
+                self.lastCapturedImage = UIImage(cgImage: cgImage)
+            }
+        } catch {
+            print("Error generating video thumbnail: \(error)")
         }
     }
 }
@@ -243,17 +307,32 @@ struct ContentView: View {
 }
 
 struct WelcomeScreen: View {
+    @State private var textOpacity: Double = 0.0
+    
     var body: some View {
         ZStack {
-            // Gray background
-            Color.gray
+            // Black background
+            Color.black
                 .ignoresSafeArea()
             
-            // Centered white text
-            Text("Welcome to ConcertCam")
-                .font(.title)
-                .fontWeight(.bold)
-                .foregroundColor(.white)
+            // Centered dark purple text with fade animation
+            Text("ConcertCam")
+                .font(.custom("GillSans-UltraBold", size: 48))
+                .foregroundColor(Color(red: 0.4, green: 0.2, blue: 0.6))
+                .opacity(textOpacity)
+                .onAppear {
+                    // Fade in animation
+                    withAnimation(.easeInOut(duration: 1.0)) {
+                        textOpacity = 1.0
+                    }
+                    
+                    // Fade out animation after 1 second
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        withAnimation(.easeInOut(duration: 1.0)) {
+                            textOpacity = 0.0
+                        }
+                    }
+                }
         }
     }
 }
@@ -336,6 +415,14 @@ struct MainScreen: View {
                     }
                     
                     Spacer()
+                    
+                    // Photo Library Preview (bottom left)
+                    HStack {
+                        PhotoLibraryPreview(lastImage: cameraManager.lastCapturedImage)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 30)
                 }
             } else if currentView == .countdown {
                 CountdownView()
@@ -345,9 +432,45 @@ struct MainScreen: View {
         }
         .onAppear {
             cameraManager.startSession()
+            // Refresh thumbnail when view appears
+            if cameraManager.photoLibraryPermissionGranted {
+                cameraManager.loadLastPhotoFromLibrary()
+            }
         }
         .onDisappear {
             cameraManager.stopSession()
+        }
+    }
+    
+    // MARK: - Photo Library Preview
+    func PhotoLibraryPreview(lastImage: UIImage?) -> some View {
+        Button(action: {
+            self.openPhotosApp()
+        }) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.gray.opacity(0.3))
+                    .frame(width: 60, height: 60)
+                
+                if let image = lastImage {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 56, height: 56)
+                        .clipped()
+                        .cornerRadius(6)
+                } else {
+                    Image(systemName: "photo.stack")
+                        .font(.system(size: 24))
+                        .foregroundColor(.white)
+                }
+            }
+        }
+    }
+    
+    private func openPhotosApp() {
+        if let url = URL(string: "photos-redirect://") {
+            UIApplication.shared.open(url)
         }
     }
     
