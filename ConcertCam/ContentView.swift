@@ -308,6 +308,7 @@ struct ContentView: View {
 
 struct WelcomeScreen: View {
     @State private var textOpacity: Double = 0.0
+    @State private var showMonkeyExplosion = false
     
     var body: some View {
         ZStack {
@@ -317,7 +318,7 @@ struct WelcomeScreen: View {
             
             // Centered dark purple text with fade animation
             Text("ConcertCam")
-                .font(.custom("GillSans-UltraBold", size: 48))
+                .font(.custom("GillSans-UltraBold", size: 24))
                 .foregroundColor(Color(red: 0.4, green: 0.2, blue: 0.6))
                 .opacity(textOpacity)
                 .onAppear {
@@ -326,14 +327,59 @@ struct WelcomeScreen: View {
                         textOpacity = 1.0
                     }
                     
-                    // Fade out animation after 1 second
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    // Fade out animation after 1.5 seconds
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        // Start monkey explosion
+                        showMonkeyExplosion = true
+                        
+                        // Fade out text
                         withAnimation(.easeInOut(duration: 1.0)) {
                             textOpacity = 0.0
                         }
                     }
                 }
+            
+            // Monkey explosion animation
+            if showMonkeyExplosion {
+                ForEach(0..<12, id: \.self) { index in
+                    MonkeyEmoji(index: index)
+                }
+            }
         }
+    }
+}
+
+struct MonkeyEmoji: View {
+    let index: Int
+    @State private var offset: CGSize = .zero
+    @State private var opacity: Double = 1.0
+    @State private var scale: Double = 1.0
+    
+    var body: some View {
+        Text("🙈")
+            .font(.system(size: 30))
+            .offset(offset)
+            .opacity(opacity)
+            .scaleEffect(scale)
+            .onAppear {
+                // Calculate random direction and distance
+                let angle = Double(index) * (360.0 / 12.0) * .pi / 180.0
+                let distance: Double = 150 + Double.random(in: 0...100)
+                
+                let targetX = cos(angle) * distance
+                let targetY = sin(angle) * distance
+                
+                // Animate explosion
+                withAnimation(.easeOut(duration: 1.5)) {
+                    offset = CGSize(width: targetX, height: targetY)
+                    scale = 0.5
+                }
+                
+                // Fade out
+                withAnimation(.easeOut(duration: 1.5).delay(0.3)) {
+                    opacity = 0.0
+                }
+            }
     }
 }
 
